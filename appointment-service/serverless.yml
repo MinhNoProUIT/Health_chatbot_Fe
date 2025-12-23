@@ -1,0 +1,66 @@
+service: appointment-service
+frameworkVersion: "3"
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  stage: dev
+  timeout: 30
+
+  environment:
+    APPOINTMENTS_TABLE: Appointments
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+        - dynamodb:Query
+        - dynamodb:Scan
+      Resource:
+        - !GetAtt AppointmentsTable.Arn
+
+  httpApi:
+    cors: true
+
+functions:
+  createAppointment:
+    handler: src/handlers/createAppointment.handler
+    events:
+      - http:
+          path: /appointment
+          method: post
+          cors: true
+
+  getAppointments:
+    handler: src/handlers/getAppointments.handler
+    events:
+      - http:
+          path: /appointments
+          method: get
+          cors: true
+
+plugins:
+  - serverless-offline
+
+resources:
+  Resources:
+    AppointmentsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: Appointments
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: appointmentId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: appointmentId
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
