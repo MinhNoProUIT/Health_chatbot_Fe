@@ -1,0 +1,165 @@
+service: reminder-service
+frameworkVersion: "4"
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ap-southeast-1 # Giữ region Singapore cho nhanh (mẫu là us-east-1)
+  stage: ${opt:stage, 'dev'}
+
+  environment:
+    REMINDER_TABLE: ${self:service}-${self:provider.stage}
+    LOG_LEVEL: ${env:LOG_LEVEL, 'info'}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.REMINDER_TABLE}
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.REMINDER_TABLE}/index/*
+
+  httpApi:
+    cors: true
+
+plugins:
+  - serverless-offline
+
+build:
+  esbuild:
+    bundle: true
+    target: node18
+    minify: false
+    sourcemap: true
+    external:
+      - "@aws-sdk/client-dynamodb"
+      - "@aws-sdk/lib-dynamodb"
+
+package:
+  individually: true
+  patterns:
+    - "!node_modules/.bin/**"
+    - "!node_modules/**/*.md"
+    - "!node_modules/**/*.ts"
+    - "!node_modules/**/*.map"
+    - "!.git/**"
+    - "!.gitignore"
+    - "!tests/**"
+    - "!test/**"
+    - "!*.md"
+    - "!package-lock.json"
+    - "!tsconfig.json"
+    - "!.env*"
+
+functions:
+  createMedication:
+    handler: handlers/createMedication.handler
+    description: "Create a new medication reminder"
+    timeout: 10
+    memorySize: 256
+    events:
+      - httpApi:
+          path: /reminders
+          method: post
+
+  getDailyReminders:
+    handler: handlers/getDailyReminders.handler
+    description: "Get reminders for today"
+    timeout: 10
+    memorySize: 256
+    events:
+      - httpApi:
+          path: /reminders/daily
+          method: get
+
+  getAllMedications:
+    handler: handlers/getAllMedications.handler
+    description: "Get all medications for management"
+    timeout: 10
+    memorySize: 256
+    events:
+      - httpApi:
+          path: /reminders
+          method: get
+
+  markAsTaken:
+    handler: handlers/markAsTaken.handler
+    description: "Mark a medication as taken"
+    timeout: 10
+    memorySize: 256
+    events:
+      - httpApi:
+          path: /reminders/taken
+          method: post
+
+  toggleMedication:
+    handler: handlers/toggleMedication.handler
+    description: "Toggle medication active status"
+    timeout: 10
+    memorySize: 256
+    events:
+      - httpApi:
+          path: /reminders/toggle
+          method: patch
+
+  deleteMedication:
+    handler: handlers/deleteMedication.handler
+    description: "Delete a medication"
+    timeout: 10
+    memorySize: 256
+    events:
+      - httpApi:
+          path: /reminders
+          method: delete
+
+  getStats:
+    handler: handlers/getStats.handler
+    description: "Get compliance statistics"
+    timeout: 10
+    memorySize: 256
+    events:
+      - httpApi:
+          path: /reminders/stats
+          method: get
+
+resources:
+  Resources:
+    ReminderTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.REMINDER_TABLE}
+        BillingMode: PAY_PER_REQUEST
+
+        AttributeDefinitions:
+          - AttributeName: PK
+            AttributeType: S
+          - AttributeName: SK
+            AttributeType: S
+
+        KeySchema:
+          - AttributeName: PK
+            KeyType: HASH
+          - AttributeName: SK
+            KeyType: RANGE
+
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+          - Key: ManagedBy
+            Value: Serverless
+
+outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value:
+      Fn::Sub: "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+
+  ReminderTableName:
+    Description: "Reminder DynamoDB Table Name"
+    Value: ${self:provider.environment.REMINDER_TABLE}
