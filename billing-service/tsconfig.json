@@ -1,0 +1,22 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "outDir": ".build",
+        "rootDir": ".",
+        "allowJs": true,
+        "checkJs": false,
+        "noEmit": false,
+        "esModuleInterop": true,
+        "moduleResolution": "node"
+    },
+    "include": [
+        "src/**/*.js",
+        "src/**/*.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        ".build",
+        ".serverless",
+        "dist"
+    ]
+}

@@ -1,0 +1,171 @@
+service: queue-service
+frameworkVersion: "3"
+useDotenv: true
+
+plugins:
+    - serverless-esbuild
+    - serverless-dynamodb
+    - serverless-offline
+
+provider:
+    name: aws
+    runtime: nodejs20.x
+    region: us-east-1
+    stage: ${opt:stage, 'dev'}
+    environment:
+        QUEUES_TABLE: ${self:service}-${self:provider.stage}-Queues
+        TICKETS_TABLE: ${self:service}-${self:provider.stage}-Tickets
+        PATIENTS_TABLE: ${self:service}-${self:provider.stage}-Patients
+        STAGE: ${self:provider.stage}
+
+    iam:
+        role:
+            statements:
+                - Effect: Allow
+                  Action:
+                      - dynamodb:GetItem
+                      - dynamodb:PutItem
+                      - dynamodb:UpdateItem
+                      - dynamodb:Query
+                      - dynamodb:DeleteItem
+                      - dynamodb:Scan
+                  Resource:
+                      - !GetAtt QueuesTable.Arn
+                      - !GetAtt TicketsTable.Arn
+                      - !Sub "${TicketsTable.Arn}/index/*"
+                      - !GetAtt PatientsTable.Arn
+
+custom:
+    esbuild:
+        bundle: true
+        minify: false
+        sourcemap: true
+        exclude: ["aws-sdk"]
+        target: "node20"
+        define: { "require.resolve": "undefined" }
+        platform: "node"
+        format: "cjs"
+        concurrency: 10
+
+    dynamodb:
+        stages:
+            - dev
+        start:
+            port: 8000
+            inMemory: true
+            migrate: true
+            seed: true
+        seed:
+            dev:
+                sources:
+                    - table: ${self:provider.environment.QUEUES_TABLE}
+                      sources: [./seed-data/queues.json]
+
+functions:
+    # 1. Check-in (Lấy số)
+    checkIn:
+        handler: handlers/api.checkInHandler
+        events:
+            - http:
+                  path: queue/checkin
+                  method: post
+                  cors: true
+
+    # 2. Kiểm tra STT (Get Status)
+    getStatus:
+        handler: handlers/api.getStatusHandler
+        events:
+            - http:
+                  path: queue/status
+                  method: get
+                  cors: true
+
+    # 3. Lấy lại số (Reissue Ticket)
+    reissueTicket:
+        handler: handlers/api.reissueHandler
+        events:
+            - http:
+                  path: queue/reissue
+                  method: post
+                  cors: true
+
+    # 4. Admin tăng STT (Advance Queue)
+    advanceQueue:
+        handler: handlers/api.advanceQueueHandler
+        events:
+            - http:
+                  path: queue/admin/advance
+                  method: post
+                  cors: true
+
+resources:
+    Resources:
+        QueuesTable:
+            Type: AWS::DynamoDB::Table
+            Properties:
+                TableName: ${self:provider.environment.QUEUES_TABLE}
+                AttributeDefinitions:
+                    - AttributeName: QueueId
+                      AttributeType: S
+                KeySchema:
+                    - AttributeName: QueueId
+                      KeyType: HASH
+                BillingMode: PAY_PER_REQUEST
+                Tags:
+                    - Key: Environment
+                      Value: ${self:provider.stage}
+                    - Key: Service
+                      Value: ${self:service}
+
+        TicketsTable:
+            Type: AWS::DynamoDB::Table
+            DeletionPolicy: Retain
+            Properties:
+                TableName: ${self:provider.environment.TICKETS_TABLE}
+                AttributeDefinitions:
+                    - AttributeName: QueueId
+                      AttributeType: S
+                    - AttributeName: TicketNumber
+                      AttributeType: N
+                    - AttributeName: UserId
+                      AttributeType: S
+                    - AttributeName: VisitDate
+                      AttributeType: S
+                KeySchema:
+                    - AttributeName: QueueId
+                      KeyType: HASH
+                    - AttributeName: TicketNumber
+                      KeyType: RANGE
+                BillingMode: PAY_PER_REQUEST
+                GlobalSecondaryIndexes:
+                    - IndexName: UserIdIndex
+                      KeySchema:
+                          - AttributeName: UserId
+                            KeyType: HASH
+                          - AttributeName: VisitDate
+                            KeyType: RANGE
+                      Projection:
+                          ProjectionType: ALL
+                Tags:
+                    - Key: Environment
+                      Value: ${self:provider.stage}
+                    - Key: Service
+                      Value: ${self:service}
+
+        PatientsTable:
+            Type: AWS::DynamoDB::Table
+            DeletionPolicy: Retain
+            Properties:
+                TableName: ${self:provider.environment.PATIENTS_TABLE}
+                AttributeDefinitions:
+                    - AttributeName: UserId
+                      AttributeType: S
+                KeySchema:
+                    - AttributeName: UserId
+                      KeyType: HASH
+                BillingMode: PAY_PER_REQUEST
+                Tags:
+                    - Key: Environment
+                      Value: ${self:provider.stage}
+                    - Key: Service
+                      Value: ${self:service}

@@ -1,0 +1,203 @@
+service: medical-info-service
+
+frameworkVersion: "4"
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: us-east-1
+  stage: ${opt:stage, 'dev'}
+
+  environment:
+    DYNAMODB_TABLE: ${self:service}-${self:provider.stage}
+    CACHE_TABLE: ${self:service}-cache-${self:provider.stage}
+    GOOGLE_API_KEY: ${env:GOOGLE_API_KEY}
+    LOG_LEVEL: ${env:LOG_LEVEL, 'info'}
+    AWS_NODEJS_CONNECTION_REUSE_ENABLED: "1"
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.DYNAMODB_TABLE}/index/*
+        - arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.CACHE_TABLE}
+
+  httpApi:
+    cors: true
+
+plugins:
+  - serverless-offline
+
+build:
+  esbuild:
+    bundle: true
+    target: node18
+    external:
+      - undici
+
+package:
+  individually: true
+  patterns:
+    - "!node_modules/.bin/**"
+    - "!node_modules/**/*.md"
+    - "!node_modules/**/*.ts"
+    - "!node_modules/**/*.map"
+    - "!.git/**"
+    - "!.gitignore"
+    - "!tests/**"
+    - "!test/**"
+    - "!*.md"
+    - "!package-lock.json"
+    - "!tsconfig.json"
+    - "!.env*"
+
+functions:
+  chat:
+    handler: handlers/chat.handler
+    description: "Medical Q&A chatbot - answers based on WHO, CDC, MOH sources only"
+    timeout: 30
+    memorySize: 512
+    events:
+      - httpApi:
+          path: /chat
+          method: post
+    environment:
+      FUNCTION_NAME: chat
+
+  extractArticle:
+    handler: handlers/extractArticle.handler
+    description: "Extract and process article content from WHO/CDC/MOH_VN URLs"
+    timeout: 60
+    memorySize: 1024
+    events:
+      - httpApi:
+          path: /articles/extract
+          method: post
+    environment:
+      FUNCTION_NAME: extractArticle
+
+  searchArticles:
+    handler: handlers/searchArticles.handler
+    description: "Search articles with advanced filtering"
+    timeout: 30
+    memorySize: 512
+    events:
+      - httpApi:
+          path: /articles/search
+          method: get
+    environment:
+      FUNCTION_NAME: searchArticles
+
+  getArticle:
+    handler: handlers/getArticle.handler
+    description: "Get article by ID with view tracking"
+    timeout: 10
+    memorySize: 256
+    events:
+      - httpApi:
+          path: /articles/{id}
+          method: get
+    environment:
+      FUNCTION_NAME: getArticle
+
+  listArticles:
+    handler: handlers/listArticles.handler
+    description: "List articles with filters and pagination"
+    timeout: 30
+    memorySize: 512
+    events:
+      - httpApi:
+          path: /articles
+          method: get
+    environment:
+      FUNCTION_NAME: listArticles
+
+resources:
+  Resources:
+    ArticlesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.DYNAMODB_TABLE}
+        BillingMode: PAY_PER_REQUEST
+
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: category
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+
+        GlobalSecondaryIndexes:
+          - IndexName: CategoryIndex
+            KeySchema:
+              - AttributeName: category
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+          - Key: ManagedBy
+            Value: Serverless
+
+    CacheTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.CACHE_TABLE}
+        BillingMode: PAY_PER_REQUEST
+
+        AttributeDefinitions:
+          - AttributeName: key
+            AttributeType: S
+
+        KeySchema:
+          - AttributeName: key
+            KeyType: HASH
+
+        TimeToLiveSpecification:
+          AttributeName: ttl
+          Enabled: true
+
+        Tags:
+          - Key: Environment
+            Value: ${self:provider.stage}
+          - Key: Service
+            Value: ${self:service}
+          - Key: Purpose
+            Value: Cache
+          - Key: ManagedBy
+            Value: Serverless
+
+outputs:
+  ApiEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value:
+      Fn::Sub: "https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+
+  ArticlesTableName:
+    Description: "Articles DynamoDB Table Name"
+    Value: ${self:provider.environment.DYNAMODB_TABLE}
+
+  CacheTableName:
+    Description: "Cache DynamoDB Table Name"
+    Value: ${self:provider.environment.CACHE_TABLE}
