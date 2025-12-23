@@ -1,0 +1,55 @@
+# Test API cho Appointment Service
+# Thay YOUR_API_URL bằng URL từ serverless deploy
+
+### 1. Tạo Appointment (POST /appointment)
+POST https://YOUR_API_URL/dev/appointment
+Content-Type: application/json
+Authorization: Bearer YOUR_JWT_TOKEN
+
+{
+  "appointmentId": "APPT-001",
+  "hospitalName": "Bệnh viện Chợ Rẫy",
+  "hospitalAddress": "201B Nguyễn Chí Thanh, Quận 5, TP.HCM",
+  "hospitalPhone": "028 3855 4137",
+  "doctorName": "BS. Nguyễn Văn A",
+  "doctorPhone": "0901234567",
+  "appointmentDate": "2025-12-25",
+  "appointmentTime": "09:00",
+  "patientName": "Trần Văn B",
+  "patientPhone": "0912345678",
+  "patientEmail": "tranvanb@example.com",
+  "symptoms": "Đau đầu, chóng mặt"
+}
+
+###
+
+### 2. Lấy danh sách Appointments (GET /appointments)
+GET https://YOUR_API_URL/dev/appointments
+Authorization: Bearer YOUR_JWT_TOKEN
+
+###
+
+### 3. Test với curl
+
+# Tạo appointment
+curl -X POST https://YOUR_API_URL/dev/appointment \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "appointmentId": "APPT-002",
+    "hospitalName": "Bệnh viện Đại học Y Dược",
+    "hospitalAddress": "215 Hồng Bàng, Quận 5, TP.HCM",
+    "hospitalPhone": "028 3855 2222",
+    "doctorName": "BS. Lê Thị C",
+    "doctorPhone": "0902345678",
+    "appointmentDate": "2025-12-26",
+    "appointmentTime": "10:30",
+    "patientName": "Nguyễn Thị D",
+    "patientPhone": "0923456789",
+    "patientEmail": "nguyenthid@example.com",
+    "symptoms": "Khó thở"
+  }'
+
+# Lấy danh sách
+curl https://YOUR_API_URL/dev/appointments \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
